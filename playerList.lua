@@ -1,18 +1,14 @@
--- name: No Location On Player List
--- description: Hides the location of players on the player list... by faking the entire thing.\n\nMod by EmilyEmmi
-local expectedShowSetting = 1
-local truePlayerListSetting = 1
+-- Custom player list
+
+playerListEnabled = true
+playerListLocations = true
+expandByDefault = false
+
 function on_hud_render()
     if not didFirstJoinStuff then return end
 
-    if gServerSettings.enablePlayerList ~= expectedShowSetting then
-        truePlayerListSetting = gServerSettings.enablePlayerList
-        expectedShowSetting = truePlayerListSetting
-    end
-    if truePlayerListSetting == 0 then return end
-    expectedShowSetting = 0
     gServerSettings.enablePlayerList = 0
-    if djui_attempting_to_open_playerlist() then
+    if djui_attempting_to_open_playerlist() and playerListEnabled then
         -- base square
         local bodyHeight = (16 * 32) + (16 - 1) * 4;
         djui_hud_set_resolution(RESOLUTION_DJUI)
@@ -47,8 +43,30 @@ function on_hud_render()
         -- players
         djui_hud_set_font(djui_menu_get_font())
         width = width - 32
+        local totalColumns = TOTAL_LOBBY_COUNT
+        if not expandByDefault then
+            local playerCount = 0
+            for i=0,MAX_PLAYERS_TOTAL-1 do
+                local a = extraMarioData[i]
+                local connected = false
+                if a.isLocal then
+                    ---@type NetworkPlayer
+                    local np = gNetworkPlayers[a.localIndex]
+                    local gIndex = network_global_index_from_local(a.localIndex)
+                    local isHost = (gIndex == 0)
+                    connected = (gServerSettings.headlessServer == 0 or (not isHost)) and (a.localIndex == 0 or np.connected)
+                else
+                    connected = (a.connected ~= 0)
+                end
+                if connected then
+                    playerCount = playerCount + 1
+                end
+            end
+            totalColumns = math.clamp((playerCount - 1) // MAX_PLAYERS + 1, 1, totalColumns)
+        end
+
         local panelHDist = 8
-        local panelWidth = width / TOTAL_LOBBY_COUNT - panelHDist / 2
+        local panelWidth = width / totalColumns - panelHDist / 2
         height = 32
         y = y + 80
         
@@ -67,7 +85,7 @@ function on_hud_render()
                 local np = gNetworkPlayers[a.localIndex]
                 local gIndex = network_global_index_from_local(a.localIndex)
                 local isHost = (gIndex == 0)
-                name = network_get_player_text_color_string(i) .. np.name
+                name = network_get_player_text_color_string(a.localIndex) .. np.name
                 course, level, area, act = np.currCourseNum, np.currLevelNum, np.currAreaIndex, np.currActNum
                 connected = (gServerSettings.headlessServer == 0 or (not isHost)) and (a.localIndex == 0 or np.connected)
                 char = gMarioStates[a.localIndex].character.type
@@ -80,8 +98,8 @@ function on_hud_render()
                 isFake = true
             end
             if connected then
-                local row = renderCount // TOTAL_LOBBY_COUNT
-                local column = renderCount % TOTAL_LOBBY_COUNT
+                local row = renderCount // totalColumns
+                local column = renderCount % totalColumns
                 local startX = (screenWidth - width) / 2 + (column * (panelWidth + panelHDist))
                 x = startX
                 local v = 32
@@ -118,18 +136,22 @@ function on_hud_render()
                 djui_hud_print_text_with_color(text, x, y, 1)]]
 
                 -- level
-                text = get_level_name(course, level, area)
-                text = convert_to_abbreviation(text)
-                if act ~= 0 then
-                    text = text .. " #" .. act
+                if playerListLocations then
+                    text = get_level_name(course, level, area)
+                    text = convert_to_abbreviation(text)
+                    if act == 99 then
+                        text = text .. " " -- Star character
+                    elseif act ~= 0 then
+                        text = text .. " #" .. act
+                    end
+                    tWidth = djui_hud_measure_text(text)
+                    x = startX + panelWidth - tWidth - 16
+                    djui_hud_set_color(255, 255, 255, 255)
+                    djui_hud_print_text_with_color(text, x, y, 1)
                 end
-                tWidth = djui_hud_measure_text(text)
-                x = startX + panelWidth - tWidth - 16
-                djui_hud_set_color(255, 255, 255, 255)
-                djui_hud_print_text_with_color(text, x, y, 1)
                 
                 renderCount = renderCount + 1
-                if renderCount % TOTAL_LOBBY_COUNT == 0 then
+                if renderCount % totalColumns == 0 then
                     y = y + 36
                 end
             end
