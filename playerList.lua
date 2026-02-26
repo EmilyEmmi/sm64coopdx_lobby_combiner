@@ -120,10 +120,14 @@ function on_hud_render()
                 local tex = character.hudHeadTexture
                 djui_hud_render_texture(tex, x, y, 2, 2)
 
+                local maxPlayerWidth = panelWidth
+                if playerListLocations then
+                    maxPlayerWidth = maxPlayerWidth / 2
+                end
                 djui_hud_set_color(255, 255, 255, 255)
                 x = x + 40
                 text = name
-                while djui_hud_measure_text(remove_color(text)) > panelWidth / 2 - 24 do
+                while djui_hud_measure_text(remove_color(text)) > maxPlayerWidth - 24 do
                     text = text:sub(1, -2)
                 end
                 djui_hud_print_text_with_color(text, x, y, 1)

@@ -29,7 +29,7 @@ HOW TO USE:
 ]]
 
 -- How many lobbies you want to host total.
-TOTAL_LOBBY_COUNT = 2
+TOTAL_LOBBY_COUNT = 4
 
 -- Frames between each read/write to modFs. You may increase this if you, the host, are experiencing performance issues.
 local FRAMES_TO_RELOAD = 2
@@ -56,12 +56,9 @@ function handle_lobby_connection()
     local startIndex = MAX_PLAYERS * LOBBY_ID
     for i = startIndex, startIndex + MAX_PLAYERS - 1 do
         local a = extraMarioData[i]
-        if a.wasConnected ~= 0 or a.connected ~= 0 then
-            a.wasConnected = a.connected
-            local bytestring = create_player_bytestring(a)
-            bytestring = string.pack("<I4", #bytestring) .. bytestring
-            fullByteString = fullByteString .. bytestring
-        end
+        local bytestring = create_player_bytestring(a)
+        bytestring = string.pack("<I4", #bytestring) .. bytestring
+        fullByteString = fullByteString .. bytestring
     end
 
     -- Store in modfs
@@ -92,7 +89,7 @@ function handle_lobby_connection()
                         local bytestring = file:read_bytes(bytes)
                         if bytestring and #bytestring ~= 0 then
                             local a = parse_player_bytestring(bytestring)
-                            if a and a.connected ~= 0 then
+                            if a and (a.wasConnected ~= 0 or a.connected ~= 0) then
                                 -- Send to other players
                                 network_send_bytestring(false, bytestring)
                                 update_extra_player(a)
@@ -143,7 +140,10 @@ function mario_update(m)
         a.level = np.currLevelNum
         a.area = np.currAreaIndex
         a.act = np.currActNum
-        a.name = network_get_player_text_color_string(m.playerIndex) .. np.name
+        if a.connected ~= 0 then
+            a.name = network_get_player_text_color_string(m.playerIndex) .. np.name
+        end
+        a.wasConnected = a.connected
 
         -- Palette parts
         for part = 0, PLAYER_PART_MAX - 1 do
@@ -524,7 +524,19 @@ hook_event(HOOK_CHARACTER_SOUND, on_character_sound)
 
 function update_extra_player(a)
     if a == nil or a.isLocal then return end
+    
+    -- connection popups
+    if a.wasConnected ~= a.connected then
+        a.wasConnected = a.connected
+        if a.connected ~= 0 then
+            construct_remote_player_popup(a, djui_language_get("NOTIF", "CONNECTED"));
+        elseif #a.name ~= 0 then
+            construct_remote_player_popup(a, djui_language_get("NOTIF", "DISCONNECTED"));
+        end
+    end
 
+    if a.connected == 0 then return end
+    
     if a.prevLevel ~= a.level or a.prevArea ~= a.area or a.prevAct ~= a.act then
         if locationPopups and a.prevAct ~= 99 then
             local np0 = gNetworkPlayers[0]
@@ -658,8 +670,8 @@ function on_server_loaded()
         a.velX = 0
         a.velY = 0
         a.velZ = 0
-        a.name = " "
-        a.msg = " "
+        a.name = ""
+        a.msg = ""
         a.torsoPos = gVec3fZero()
 
         -- Palette parts
@@ -673,13 +685,13 @@ function on_server_loaded()
         a.prevLevel = 0
         a.prevArea = 0
         a.prevAct = 0
-        a.prevMsg = " "
+        a.prevMsg = ""
         a.prevSound = -1
         a.wasConnected = 1
         a.isLocal = (i >= startIndex and i <= endIndex)
         if a.isLocal then
             a.globalIndex = i - startIndex
-            a.localIndex = network_local_index_from_global(a.globalIndex)
+            a.localIndex = network_local_index_from_global(a.globalIndex) 
         else
             a.globalIndex = -1
             a.localIndex = -1
